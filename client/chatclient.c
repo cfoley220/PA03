@@ -106,8 +106,8 @@ int main(int argc, char *argv[]) {
   }
 
   // Create socket
-	int socket;
-	if((socket = socket(AF_INET, SOCK_STREAM, 0)) < 0 )  {
+	int clientSocket;
+	if((clientSocket = socket(AF_INET, SOCK_STREAM, 0)) < 0 )  {
 		printf("Client: Error creating socket\n");
 		exit(0);
 	}
@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
   servaddr.sin_port = htons(port);
 
   // connect
-  if (connect(socket, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
+  if (connect(clientSocket, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
     printf("Client: Error connecting to server: %s\n", strerror(errno));
     exit(0);
   }
@@ -137,13 +137,13 @@ int main(int argc, char *argv[]) {
 
   //Create listening thread
   pthread_t clientThread;
-  pthread_create(&clientThread, NULL, receive_messages, (void*) &socket);
+  pthread_create(&clientThread, NULL, receive_messages, (void*) &clientSocket);
 
   //Send username to server
   bzero(buffer, sizeof(buffer));
   sprintf(buffer, username);
   buffer[BUFFER_MAX_SIZE] = '\0';
-  sendbuf(buffer, socket, strlen(buffer));
+  sendbuf(buffer, clientSocket, strlen(buffer));
 
 
 
