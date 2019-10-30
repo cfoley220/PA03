@@ -9,6 +9,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <errno.h>
 
 // Define variables
 #define BUFFER_MAX_SIZE 4096
