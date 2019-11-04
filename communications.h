@@ -4,6 +4,8 @@
 #define BAD_PASSWORD_STATUS 0
 #define GOOD_PASSWORD_STATUS 1
 
+enum Operation {BROADCAST, PRIVATE, HISTORY, EXIT};
+
 void debug(char *message) {
   printf("THREAD %d: %s", pthread_self(), message);
 

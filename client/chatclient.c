@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <stdbool.h>
 #include "../communications.h"
 
 void* receive_messages(void* socket) {
@@ -24,6 +25,7 @@ void* receive_messages(void* socket) {
   // Receive size of message to receive
   int size = receive_int(clientSocket);
 
+  debug("got a size");
   if (size < 0) {
     debug("something went wrong"); //TODO
   }
@@ -33,6 +35,7 @@ void* receive_messages(void* socket) {
   bzero(message, sizeof(message));
   receive_buffer(clientSocket, message, size);
   message[size] = '\0';
+  printf("recieved something within listening thread\n");
 
   // Print message
   printf("%s", message);
@@ -42,6 +45,61 @@ void* receive_messages(void* socket) {
   // TODO
 }
 
+bool isValidOperation(char * op){
+
+  if (strcmp(op, "B") != 0 &&
+      strcmp(op, "P") != 0 &&
+      strcmp(op, "H") != 0 &&
+      strcmp(op, "X") != 0
+    ) {
+    return false;
+  }
+
+  return true;
+}
+
+enum Operation getOperation(){
+  printf("Please type in a operation (B, P, H, X):   \n");
+
+  // Prepare max buffer
+  char maxBuffer[BUFFER_MAX_SIZE];
+  bzero(maxBuffer, sizeof(maxBuffer));
+
+  if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
+    debug("Failed to get user input");
+  }
+
+  // Remove new line
+  maxBuffer[strlen(maxBuffer) - 1] = '\0';
+
+  // Continue to prompt for operation until a valid operation is recieved
+  while (!isValidOperation(maxBuffer)) {
+    printf("Please type in a valid operation (B, P, H, X):   \n");
+
+    bzero(maxBuffer, sizeof(maxBuffer));
+
+    if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
+      debug("Failed to get user input");
+    }
+
+    // Remove new line
+    maxBuffer[strlen(maxBuffer) - 1] = '\0';
+  }
+
+  if (strcmp(maxBuffer, "B") == 0) {
+    return BROADCAST;
+  } else if (strcmp(maxBuffer, "P") == 0) {
+    return PRIVATE;
+  } else if (strcmp(maxBuffer, "H") == 0) {
+    return HISTORY;
+  } else if (strcmp(maxBuffer, "X") == 0) {
+    return EXIT;
+  } else {
+    debug("Received invalid operation somehow.");
+    exit(1);
+  }
+
+}
 /*******************
 *  Set up client   *
 *******************/
@@ -103,10 +161,10 @@ int main(int argc, char *argv[]) {
   }
 
   debug("Connection established\n");
+
   // Prepare max buffer
   char maxBuffer[BUFFER_MAX_SIZE];
   bzero(maxBuffer, sizeof(maxBuffer));
-
 
   /*************************
   *  Log in or create user *
@@ -120,15 +178,6 @@ int main(int argc, char *argv[]) {
   // Receive response from server
   int userAccountStatus = receive_int(clientSocket);
 
-  // Handle status
-  if (userAccountStatus == OLD_USER_STATUS) {
-    printf("\tgot status of OLD_USER_STATUS\n");
-  } else if (userAccountStatus == NEW_USER_STATUS){
-    printf("\tgot status of NEW_USER_STATUS\n");
-  } else {
-    printf("you should never see this. user status fucked\n");
-  }
-
   // Request password
   bzero(maxBuffer, sizeof(maxBuffer));
   printf("Please enter your password: "); // TODO: make this match the demo video
@@ -137,77 +186,90 @@ int main(int argc, char *argv[]) {
     debug("Failed to get user input");
   }
 
+  // Remove new line
+  maxBuffer[strlen(maxBuffer) - 1] = '\0';
+
+
+  // Send password
   printf("Sending password (%s)\n", maxBuffer);
-  //send password
   send_string(clientSocket, maxBuffer);
-  printf("Sent password\n");
 
   // Handle status
   int passwordStatus = receive_int(clientSocket);
 
   if (passwordStatus == BAD_PASSWORD_STATUS) {
-    printf("\t got status of BAD_PASSWORD_STATUS\n");
-  } else if (passwordStatus == GOOD_PASSWORD_STATUS) {
-    printf("\t got status of GOOD_PASSWORD_STATUS\n");
-  } else {
-    printf("you should never see this print statement. pass status fucked up.\n");
-  }
-
-  //printf("----------------------\n");
-  //printf("Handling statuses now\n");
-
-  // if (userAccountStatus == OLD_USER_STATUS) {
-  //   printf("userAccountStatus is true\n");
-  //   while (passwordStatus == BAD_PASSWORD_STATUS) {
-  //     printf("passowrd status is false\n");
-  //     // Request password
-  //     bzero(maxBuffer, sizeof(maxBuffer));
-  //     printf("Password incorrect. Please enter your password: "); // TODO: make this match the demo video
-
-  //     if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
-  //       debug("Failed to get user input\n");
-  //     }
-
-  //     printf("got password: %s\n", maxBuffer);
-
-  //     send_string(clientSocket, maxBuffer);
-
-  //     // Handle status
-  
-  //int creationStatus = receive_int(clientSocket);
-  if (userAccountStatus == NEW_USER_STATUS && passwordStatus == GOOD_PASSWORD_STATUS) {
-    printf("User creation successful!\n");
-  }
-  
-  //   }
-    //printf("while loop done\n");
-
-  //} else if (passwordStatus == BAD_PASSWORD_STATUS) {
-    //debug("Failed to register.\n");
-
-    //printf("userAccountStatus is false and passwordStatus is false\n");
-
+    printf("Failure to login\n");
     exit(1);
-    // TODO: ensure this is the behavior we want
-  //}
+  } else if (userAccountStatus == NEW_USER_STATUS) {
+    printf("User creation successful\n");
+  } else {
+    printf("Successful login. Welcome back.\n");
+  }
 
   debug("done with username and password shit.\n");
 
   /***************************
   *  Create listening thread *
   ****************************/
+
   debug("creating new thread\n");
 
-  pthread_t clientThread;
-  pthread_create(&clientThread, NULL, receive_messages, (void*) &clientSocket);
+  pthread_t listeningThread;
+  pthread_create(&listeningThread, NULL, receive_messages, (void*) &clientSocket);
 
   debug("i am main thread\n");
 
   /**********************
   *  Interact with user *
   **********************/
+  int counter = 0; //TODO: delete counter
+  while(1 && counter++ < 10) {
 
-  // Loop until client exits
+    // Get operation from user
+    enum Operation operation = getOperation();
+
+    // Send operation to server
+    send_int(clientSocket, operation);
+
+    switch (operation) {
+      case BROADCAST:
+        printf("Broadcasting\n");
+        
+        // Wait for acknowledgment
+        receive_int(clientSocket);
+
+        // Get message
+        bzero(maxBuffer, sizeof(maxBuffer));
+        printf("Please enter your message: "); // TODO: make this match the demo video
+
+        if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
+          debug("Failed to get user input");
+        }
+
+        send_string(clientSocket, maxBuffer);
+
+        // Wait for confirmation
+        int status = receive_int(clientSocket);
+
+        if (status) {
+          printf("Successfully sent\n");
+        } else {
+          printf("something didnt work ): sorry\n");
+        }
+
+        break;
+      case PRIVATE:
+        printf("privating\n");
+        break;
+      case HISTORY:
+        printf("Historying\n");
+        break;
+      case EXIT:
+        printf("exiting\n");
+        break;
+    }
+  }
+  // enum opertaion = getOperation();
 
     // Update most recent prompt to main prompt
     // Display main prompt
@@ -225,6 +287,6 @@ int main(int argc, char *argv[]) {
       // quit
 
 
-  pthread_join(clientThread, NULL);
+  pthread_join(listeningThread, NULL);
 
 }

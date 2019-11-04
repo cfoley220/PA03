@@ -1,0 +1,4 @@
+rut:hot
+look:5
+hello:4
+hello:4

@@ -125,13 +125,16 @@ int check_password(FILE* fp, char* username, char* password) {
     if (strcmp(temp2, username) == 0) {
       temp2 = strtok(NULL, ":");
       //temp2[strlen(temp2) - 1] = '\0';
+      temp2[strlen(temp2) - 1] = '\0';
       printf("password in file: %s\n", temp2);
       if (strcmp(temp2, password) == 0) {
+        printf("Password match\n");
         return GOOD_PASSWORD_STATUS;
       }
     }
     bzero((char *)&temp, sizeof(temp));
   }
+  printf("Bad password!");
   return BAD_PASSWORD_STATUS;
 }
 
@@ -139,7 +142,7 @@ int new_user(FILE *fp, char* username, char* password){
   //fseek(fp, 0, SEEK_END);
   debug("in new user function\n");
   char line[BUFFER_MAX_SIZE];
-  sprintf(line, "%s:%s", username, password);
+  sprintf(line, "%s:%s\n", username, password);
   printf("line to be added to the file: %s\n", line);
   int status = fputs(line, fp);
   printf("status of adding it to the file %d\n", status);
@@ -151,13 +154,30 @@ int new_user(FILE *fp, char* username, char* password){
   return GOOD_PASSWORD_STATUS;
 }
 
+int new_client(FILE* fp, char* username, int my_socket) {
+  //fseek(fp, 0, SEEK_END);
+  debug("in new client function\n");
+  char line[BUFFER_MAX_SIZE];
+  sprintf(line, "%s:%d\n", username, my_socket);
+  printf("line to be added to the file: %s\n", line);
+  int status = fputs(line, fp);
+  printf("status of adding it to the file %d\n", status);
+
+  if(status < 0) {
+    return BAD_PASSWORD_STATUS;
+  }
+
+  return GOOD_PASSWORD_STATUS;
+
+}
+
 void* connection_handler(void* socket) {
     int clientSocket = *(int*)socket;
     int rec;
     debug("About to try to recieve string\n");
 
     // Receive username
-  
+
     char *username = receive_string(clientSocket);
     //username[strlen(username) - 1] = '\0';
     printf("username: %s\n", username);
@@ -166,9 +186,9 @@ void* connection_handler(void* socket) {
 
     FILE *fp = fopen("Users.txt", "r");
     int found = search(fp, username);
-    printf("Status of found: %d", found);
+    printf("Status of found: %d\n", found);
     fclose(fp);
-  
+
     send_int(clientSocket, found);
 
     if (found) { // user exists
@@ -177,12 +197,26 @@ void* connection_handler(void* socket) {
       //password[strlen(password) - 1] = '\0';
 
       // check if password if correct
-      //fp =fopen("Users.txt", "r");
-      int correct = check_password(fp, username, password);
-      //fclose(fp);
+      fp =fopen("Users.txt", "r");
+      int status = check_password(fp, username, password);
+      printf("Status of password check: %d", status);
+      fclose(fp);
 
       // send status of if password was correct
-      send_int(clientSocket, correct);
+      send_int(clientSocket, status);
+
+      //Add user to Clients file of currently signed-on users
+      if (status == 1) {
+        FILE* fp = fopen("Clients.txt", "a");
+        int response = new_client(fp, username, clientSocket);
+        fclose(fp);
+        if (response == 0) {
+          printf("Adding to clients file failed.\n");
+        }
+        else {
+          printf("Adding to clients file successful!\n");
+        }
+      }
 
     } else { // user DNE
       // receive new password
@@ -201,9 +235,43 @@ void* connection_handler(void* socket) {
       // send status of creating new user
       send_int(clientSocket, status);
 
+      //Add user to Clients file of currently signed-on users
+      if (status == 1) {
+        FILE* fp = fopen("Clients.txt", "a");
+        int response = new_client(fp, username, clientSocket);
+        fclose(fp);
+        if (response == 0) {
+          printf("Adding to clients file failed.\n");
+        }
+        else {
+          printf("Adding to clients file successful!\n");
+        }
+      }
+
       debug("Sent status\n");
 
     }
+
+    //-------
+    //Receive command from client
+    //char* option = "";
+    while (1) {
+      enum Operation option = receive_int(clientSocket);
+      if (option == BROADCAST) {
+        printf("in broadcast option!\n");
+        int status = send_int(clientSocket, 1);
+        char* received_message = receive_string(clientSocket);
+        printf("%s\n", received_message);
+        break;
+
+      }
+
+    }
+
+
+
+
+
 
     //send_int(clientSocket, 5);
     //send_buffer(clientSocket, "hello", 5);
