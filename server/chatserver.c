@@ -10,55 +10,10 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <errno.h>
-
-// Define variables
-#define BUFFER_MAX_SIZE 4096
+#include <arpa/inet.h>
+#include "../communications.h"
 
 void* connection_handler(void*);
-
-//Sending and Receiving Functions
-int send_buffer(int clientSocket, char *buffer, int size) {
-    int len;
-    if ((len = write(clientSocket, buffer, size)) == -1) {
-        perror("Server Send\n");
-        exit(1);
-    }
-    return len;
-}
-
-int receive_buffer(int clientSocket, char *buffer, int size) {
-    int len;
-    bzero(buffer, sizeof(buffer));
-    if ((len = read(clientSocket, buffer, size)) == -1) {
-        perror("Server Receive!");
-        exit(1);
-    }
-    return len;
-}
-
-int send_int(int value, int clientSocket) {
-    int len;
-    uint32_t temp = htonl(value);
-    if ((len = write(clientSocket, &temp, sizeof(temp))) == -1) {
-        perror("Server Send");
-        exit(1);
-    }
-
-    return len;
-}
-
-int receive_int(int clientSocket) {
-    int buffer;
-    int len;
-    bzero(&buffer, sizeof(buffer));
-    if ((len = read(clientSocket, &buffer, sizeof(buffer))) == -1) {
-        perror("Server Receive Error");
-        exit(1);
-    }
-
-    int temp = ntohl(buffer);
-    return temp;
-}
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
@@ -85,7 +40,9 @@ int main(int argc, char* argv[]) {
         exit(-1);
     };
 
-    char *IPbuffer = inet_ntoa(*((struct in_addr *)gethostbyname(hostBuffer)->h_addr_list[0]));
+    char* IPbuffer = inet_ntoa(*((struct in_addr*) gethostbyname(hostBuffer)->h_addr_list[0]));
+
+
 
     serverAddr.sin_addr.s_addr = inet_addr(IPbuffer);
 
@@ -122,28 +79,139 @@ int main(int argc, char* argv[]) {
     while ((newClient = accept(sockfd, (struct sockaddr *)&clientAddr, &clientAddrLen))) {
         printf("Connection established\n");
         if (pthread_create(&serverThread, NULL, connection_handler, (void*) &newClient) < 0) {
-            perror("ERROR: Couldn't create thread!");
+            perror("ERROR: Couldn't create thread!\n");
             exit(1);
         }
+
     }
 
     if (newClient < 0) {
         perror("Accept failed\n");
         exit(1);
     }
+
     return 0;
 
 }
 
-void* connection_handler(void* socket) {
-    int new_s = *(int*)socket;
-    char buffer[BUFFER_MAX_SIZE];
-    int rec;
+int search(FILE* fp, char* username) {
+  char temp[BUFFER_MAX_SIZE];
+  while(fgets(temp, sizeof(temp), fp)) {
+    if (strcmp(temp, "") != 0) {
+      char* temp2;
+      bzero((char *)&temp2, sizeof(temp2));
+      temp2 = strtok(temp, ":");
+      if (strcmp(temp2, username) == 0) {
+        return OLD_USER_STATUS;
+      }
+    }
+    bzero((char *)&temp, sizeof(temp));
+  }
+  return NEW_USER_STATUS;
+}
 
-    //Receive username
-    char username[BUFFER_MAX_SIZE];
-    bzero((char *)&username, sizeof(username));
-    recvbuf(new_s, username, sizeof(username));
-    username[strlen(username) - 1] = '\0';
-    printf("%s", username);
+int check_password(FILE* fp, char* username, char* password) {
+  char temp[BUFFER_MAX_SIZE];
+  bzero((char *)&temp, sizeof(temp));
+  while(fgets(temp, sizeof(temp), fp)) {
+    printf("The current line in users file: %s\n", temp);
+    char* temp2;
+    //char* temp3;
+    bzero((char *)&temp2, sizeof(temp2));
+    //bzero((char *)&temp3, sizeof(temp3));
+    temp2 = strtok(temp, ":");
+    //temp3 = strtok(NULL, ":");
+    printf("username in file: %s\n", temp2);
+    if (strcmp(temp2, username) == 0) {
+      temp2 = strtok(NULL, ":");
+      printf("password in file: %s\n", temp2);
+      if (strcmp(temp2, password) == 0) {
+        return GOOD_PASSWORD_STATUS;
+      }
+    }
+    //temp3[strlen(temp3) - 1] = '\0';
+    //if (strcmp(temp2, username) == 0) {
+      //if (strcmp(temp3, password) == 0) {
+        //return GOOD_PASSWORD_STATUS;
+      //}
+    //}
+    bzero((char *)&temp, sizeof(temp));
+  }
+  return BAD_PASSWORD_STATUS;
+}
+
+int new_user(FILE *fp, char* username, char* password){
+  fseek(fp, 0, SEEK_END);
+  debug("in new user function\n");
+  char line[BUFFER_MAX_SIZE];
+  sprintf(line, "%s:%s", username, password);
+  printf("line to be added to the file: %s\n", line);
+  int status = fputs(line, fp);
+  printf("status of adding it to the file %d\n", status);
+
+  if(status < 0) {
+    return BAD_PASSWORD_STATUS;
+  }
+
+  return GOOD_PASSWORD_STATUS;
+}
+
+void* connection_handler(void* socket) {
+    int clientSocket = *(int*)socket;
+    int rec;
+    debug("About to try to recieve string\n");
+
+    // Receive username
+    //char username[BUFFER_MAX_SIZE];
+    char *username = receive_string(clientSocket);
+    printf("username: %s\n", username);
+
+    // Check if the user exists already
+
+    FILE *fp = fopen("Users.txt", "r+");
+    int found = search(fp, username);
+    fclose(fp);
+    //int found = 0;
+    //sending if user is found
+    send_int(clientSocket, found);
+    if(found){ // user exists
+      // receive password
+      char *password = receive_string(clientSocket);
+
+      // check if password if correct
+      fp =fopen("Users.txt", "r");
+      int correct = check_password(fp, username, password);
+      fclose(fp);
+
+      // send status
+      send_int(clientSocket, correct);
+
+    } else { // user DNE
+      // receive new password
+      char *password = receive_string(clientSocket);
+
+      printf("Password received: %s\n", password);
+
+      // write new user/password to the file
+      fp = fopen("Users.txt", "r+");
+      int status = new_user(fp, username, password);
+      fclose(fp);
+
+      debug("Wrote new user to the file\n");
+
+      // send status
+      send_int(clientSocket, status);
+
+      debug("Sent status\n");
+
+    }
+
+    //send_int(clientSocket, 5);
+    //send_buffer(clientSocket, "hello", 5);
+
+
+    // make sure this happens after we finish using username
+    free(username);
+
+
 }
