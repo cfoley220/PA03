@@ -69,11 +69,11 @@ int main(int argc, char* argv[]) {
 
     //create users and active clients files (signed in vs all)
     pthread_t serverThread;
-    FILE* fp;
-    fp = fopen("Clients.txt", "wr");
-    fclose(fp);
-    fp = fopen("Users.txt", "wr");
-    fclose(fp);
+    //FILE* fp;
+    // fp = fopen("Clients.txt", "wr");
+    // fclose(fp);
+    // fp = fopen("Users.txt", "wr");
+    // fclose(fp);
 
     //creates a thread for every incoming connection from a client
     while ((newClient = accept(sockfd, (struct sockaddr *)&clientAddr, &clientAddrLen))) {
@@ -95,7 +95,9 @@ int main(int argc, char* argv[]) {
 }
 
 int search(FILE* fp, char* username) {
+  //fseek(fp, 0, SEEK_SET);
   char temp[BUFFER_MAX_SIZE];
+  bzero((char *)&temp, sizeof(temp));
   while(fgets(temp, sizeof(temp), fp)) {
     if (strcmp(temp, "") != 0) {
       char* temp2;
@@ -111,37 +113,30 @@ int search(FILE* fp, char* username) {
 }
 
 int check_password(FILE* fp, char* username, char* password) {
+  //fseek(fp, 0, SEEK_SET);
   char temp[BUFFER_MAX_SIZE];
   bzero((char *)&temp, sizeof(temp));
   while(fgets(temp, sizeof(temp), fp)) {
     printf("The current line in users file: %s\n", temp);
     char* temp2;
-    //char* temp3;
     bzero((char *)&temp2, sizeof(temp2));
-    //bzero((char *)&temp3, sizeof(temp3));
     temp2 = strtok(temp, ":");
-    //temp3 = strtok(NULL, ":");
     printf("username in file: %s\n", temp2);
     if (strcmp(temp2, username) == 0) {
       temp2 = strtok(NULL, ":");
+      //temp2[strlen(temp2) - 1] = '\0';
       printf("password in file: %s\n", temp2);
       if (strcmp(temp2, password) == 0) {
         return GOOD_PASSWORD_STATUS;
       }
     }
-    //temp3[strlen(temp3) - 1] = '\0';
-    //if (strcmp(temp2, username) == 0) {
-      //if (strcmp(temp3, password) == 0) {
-        //return GOOD_PASSWORD_STATUS;
-      //}
-    //}
     bzero((char *)&temp, sizeof(temp));
   }
   return BAD_PASSWORD_STATUS;
 }
 
 int new_user(FILE *fp, char* username, char* password){
-  fseek(fp, 0, SEEK_END);
+  //fseek(fp, 0, SEEK_END);
   debug("in new user function\n");
   char line[BUFFER_MAX_SIZE];
   sprintf(line, "%s:%s", username, password);
@@ -162,44 +157,48 @@ void* connection_handler(void* socket) {
     debug("About to try to recieve string\n");
 
     // Receive username
-    //char username[BUFFER_MAX_SIZE];
+  
     char *username = receive_string(clientSocket);
+    //username[strlen(username) - 1] = '\0';
     printf("username: %s\n", username);
 
     // Check if the user exists already
 
-    FILE *fp = fopen("Users.txt", "r+");
+    FILE *fp = fopen("Users.txt", "r");
     int found = search(fp, username);
+    printf("Status of found: %d", found);
     fclose(fp);
-    //int found = 0;
-    //sending if user is found
+  
     send_int(clientSocket, found);
-    if(found){ // user exists
+
+    if (found) { // user exists
       // receive password
       char *password = receive_string(clientSocket);
+      //password[strlen(password) - 1] = '\0';
 
       // check if password if correct
-      fp =fopen("Users.txt", "r");
+      //fp =fopen("Users.txt", "r");
       int correct = check_password(fp, username, password);
-      fclose(fp);
+      //fclose(fp);
 
-      // send status
+      // send status of if password was correct
       send_int(clientSocket, correct);
 
     } else { // user DNE
       // receive new password
       char *password = receive_string(clientSocket);
+      //password[strlen(password) - 1] = '\0';
 
       printf("Password received: %s\n", password);
 
       // write new user/password to the file
-      fp = fopen("Users.txt", "r+");
+      fp = fopen("Users.txt", "a");
       int status = new_user(fp, username, password);
       fclose(fp);
 
       debug("Wrote new user to the file\n");
 
-      // send status
+      // send status of creating new user
       send_int(clientSocket, status);
 
       debug("Sent status\n");

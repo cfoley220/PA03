@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
   }
 
   printf("Sending password (%s)\n", maxBuffer);
-
+  //send password
   send_string(clientSocket, maxBuffer);
   printf("Sent password\n");
 
@@ -153,38 +153,43 @@ int main(int argc, char *argv[]) {
     printf("you should never see this print statement. pass status fucked up.\n");
   }
 
-  printf("----------------------\n");
-  printf("Handling statuses now\n");
+  //printf("----------------------\n");
+  //printf("Handling statuses now\n");
 
-  if (userAccountStatus == OLD_USER_STATUS) {
-    printf("userAccountStatus is true\n");
-    while (passwordStatus == BAD_PASSWORD_STATUS) {
-      printf("passowrd status is false\n");
-      // Request password
-      bzero(maxBuffer, sizeof(maxBuffer));
-      printf("Password incorrect. Please enter your password: "); // TODO: make this match the demo video
+  // if (userAccountStatus == OLD_USER_STATUS) {
+  //   printf("userAccountStatus is true\n");
+  //   while (passwordStatus == BAD_PASSWORD_STATUS) {
+  //     printf("passowrd status is false\n");
+  //     // Request password
+  //     bzero(maxBuffer, sizeof(maxBuffer));
+  //     printf("Password incorrect. Please enter your password: "); // TODO: make this match the demo video
 
-      if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
-        debug("Failed to get user input\n");
-      }
+  //     if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
+  //       debug("Failed to get user input\n");
+  //     }
 
-      printf("got password: %s\n", maxBuffer);
+  //     printf("got password: %s\n", maxBuffer);
 
-      send_string(clientSocket, maxBuffer);
+  //     send_string(clientSocket, maxBuffer);
 
-      // Handle status
-      int passwordStatus = receive_int(clientSocket);
-    }
-    printf("while loop done\n");
+  //     // Handle status
+  
+  //int creationStatus = receive_int(clientSocket);
+  if (userAccountStatus == NEW_USER_STATUS && passwordStatus == GOOD_PASSWORD_STATUS) {
+    printf("User creation successful!\n");
+  }
+  
+  //   }
+    //printf("while loop done\n");
 
-  } else if (passwordStatus == BAD_PASSWORD_STATUS) {
-    debug("Failed to register.\n");
+  //} else if (passwordStatus == BAD_PASSWORD_STATUS) {
+    //debug("Failed to register.\n");
 
-    printf("userAccountStatus is false and passwordStatus is false\n");
+    //printf("userAccountStatus is false and passwordStatus is false\n");
 
     exit(1);
     // TODO: ensure this is the behavior we want
-  }
+  //}
 
   debug("done with username and password shit.\n");
 
