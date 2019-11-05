@@ -1,9 +1,0 @@
-rut:hot
-new:password
-look:look
-hello:world
-Cat:catPassword
-dog:dogPassword
-fish:fishPassword
-CPGrey:password
-user2:password

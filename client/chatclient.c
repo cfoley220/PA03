@@ -43,6 +43,7 @@ char lastPrompt[BUFFER_MAX_SIZE];
 * Send a prompt to the user. Automatically saves the prompt as the last prompt used
 */
 void prompt(char * p){
+  fflush(stdout);
   printf("%s", p);
 
   pthread_mutex_lock(&promptMutex);
@@ -55,7 +56,7 @@ void prompt(char * p){
 * Handler for the listening thread to recieve messages from the server
 */
 void* receive_messages(void* socket) {
-  debug("i am child (listening thread)\n");
+  // debug("i am child (listening thread)\n");
 
   // Convert socket to a usable variable
   int clientSocket = *(int *)socket;
@@ -76,8 +77,7 @@ void* receive_messages(void* socket) {
     receive_buffer(clientSocket, message, size);
     message[size] = '\0';
 
-    printf("Received message: %s\n", message); // TODO: delete
-
+    // printf("Received message:\n~~~\n%s\n~~~\n", message);
     // Handle message
     if (strcmp(message, "ACK") == 0) {
 
@@ -103,14 +103,14 @@ void* receive_messages(void* socket) {
     } else {
       // Message is a standard communcation message
 
-      // printf("%s", message); // TODO: uncomment
+      printf("\n%s\n", message); // TODO: uncomment
 
       // Display propmt to user
-      pthread_mutex_lock(&promptMutex);
+      pthread_mutex_lock(&promptMutex); //TODO: move this above the print?
 
       // Flush out all of previous typed things
       // TODO: this is not working
-      while (getche() != '\n') { ; }
+      // while (getche() != '\n') { ; }
 
       // Display new prompt
       printf(lastPrompt);
@@ -304,14 +304,13 @@ int main(int argc, char *argv[]) {
   pthread_t listeningThread;
   pthread_create(&listeningThread, NULL, receive_messages, (void*) &clientSocket);
 
-  debug("i am main thread\n");
+  // debug("i am main thread\n");
 
   /**********************
   *  Interact with user *
   **********************/
 
-  int counter = 0; //TODO: delete counter
-  while(1 && counter++ < 10) {
+  while(1) {
 
     // Get operation from user
     enum Operation operation = getOperation();
@@ -349,6 +348,12 @@ int main(int argc, char *argv[]) {
         break;
 
       case PRIVATE:
+
+
+        if(!waitForConfirmation()){
+          printf("No other users are currently online.\n");
+          break;
+        };
 
         // At this point, the server sends a list of active users.
 
@@ -388,7 +393,9 @@ int main(int argc, char *argv[]) {
 
       case HISTORY:
 
-        printf("Historying\n");
+        bzero(lastPrompt, sizeof(lastPrompt));
+
+        waitForAcknowledgement();
 
         break;
 
