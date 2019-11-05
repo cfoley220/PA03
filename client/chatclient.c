@@ -14,39 +14,82 @@
 #include <stdbool.h>
 #include "../communications.h"
 
-void* receive_messages(void* socket) {
-  debug("i am child (listening thread)");
+// Flags used to allow thread communication
+bool acknowledged, confirmation, success, promptReady;
 
-  int clientSocket = *(int *)socket;
+// Variable the holds that last prompt sent to the user.
+char lastPrompt[BUFFER_MAX_SIZE];
 
-  debug("socket is: --\n");
-  printf("\t%d\n", clientSocket);
+/*
+* Send a prompt to the user. Automatically saves the prompt as the last prompt used
+*/
+void prompt(char * p){
+  printf("%s", p);
 
-  // Receive size of message to receive
-  int size = receive_int(clientSocket);
+  promptReady = false;
+  strcpy(lastPrompt, p);
+  promptReady = true;
 
-  debug("got a size");
-  if (size < 0) {
-    debug("something went wrong"); //TODO
-  }
-
-  // Receive message
-  char message[size+1];
-  bzero(message, sizeof(message));
-  receive_buffer(clientSocket, message, size);
-  message[size] = '\0';
-  printf("recieved something within listening thread\n");
-
-  // Print message
-  printf("%s", message);
-
-
-  // Print prompt
-  // TODO
 }
 
-bool isValidOperation(char * op){
+/*
+* Handler for the listening thread to recieve messages from the server
+*/
+void* receive_messages(void* socket) {
+  debug("i am child (listening thread)\n");
 
+  // Convert socket to a usable variable
+  int clientSocket = *(int *)socket;
+
+  int count = 0;
+  while(true && count++ < 30) { //TODO: remove counter
+
+    // Receive size of message to receive
+    int size = receive_int(clientSocket);
+
+    debug("I recieved a size from the server.\n");
+    if (size < 0) {
+      debug("something went wrong"); //TODO
+    }
+
+    // Receive message
+    char message[size+1];
+    bzero(message, sizeof(message));
+    receive_buffer(clientSocket, message, size);
+    message[size] = '\0';
+
+    debug("I recieved a buffer from the server\n");
+
+    printf("DEBUG: got message: %s\n", message); // TODO: delete
+
+    // Handle message
+    if (strcmp(message, "ACK") == 0) {
+      acknowledged = true;
+    } else if (strcmp(message, "CONF_SUCCESS") == 0){
+      confirmation = true;
+      success = true;
+    } else if (strcmp(message, "CONF_FAIL") == 0){
+      confirmation = true;
+      success = false;
+    } else {
+      // Print message
+
+      // printf("%s", message); // TODO: uncomment
+
+      // Wait for prompt to be set
+      while (!promptReady) {
+        ;
+      }
+      printf(lastPrompt);
+    }
+
+  }
+}
+
+/*
+* Checks if a string is a valid operation choice for a command
+*/
+bool isValidOperation(char * op){
   if (strcmp(op, "B") != 0 &&
       strcmp(op, "P") != 0 &&
       strcmp(op, "H") != 0 &&
@@ -58,8 +101,11 @@ bool isValidOperation(char * op){
   return true;
 }
 
+/*
+* Prompts the user for a operation and converts it to a proper Operation
+*/
 enum Operation getOperation(){
-  printf("Please type in a operation (B, P, H, X):   \n");
+  prompt("Please type in a operation (B, P, H, X):\n>   ");
 
   // Prepare max buffer
   char maxBuffer[BUFFER_MAX_SIZE];
@@ -74,7 +120,7 @@ enum Operation getOperation(){
 
   // Continue to prompt for operation until a valid operation is recieved
   while (!isValidOperation(maxBuffer)) {
-    printf("Please type in a valid operation (B, P, H, X):   \n");
+    prompt("Please type in a valid operation (B, P, H, X):\n>   ");
 
     bzero(maxBuffer, sizeof(maxBuffer));
 
@@ -100,25 +146,36 @@ enum Operation getOperation(){
   }
 
 }
-/*******************
-*  Set up client   *
-*******************/
 
-// Connect to server
-// Prompt for and send username
-//Based on the video, we need to first send username and then server
-//will check to see if the user is new or returning, and prompt the
-//client accordingly.
-// Prompt for and send password
-// Handle response
-  // If fail, prompt for and send password again
+/*
+* Spin-waits until acknowledgment flag is set to true. Resets flag to false
+*/
+void waitForAcknowledgement() {
+  debug("Waiting for acknowledgment\n");
+  // Wait for acknowledgment
+  while(!acknowledged){
+    ;
+  }
+  acknowledged = false;
+  // TODO: replace with thread safe application?
+  debug("Received acknowledgment\n");
+}
 
-// Create thread to listen for messages
-
-/**********************
-*  Interact with user *
-**********************/
-
+/*
+* Spin-waits until confirmation flag is set to true.
+* Returns the value of the confirmation
+*/
+bool waitForConfirmation() {
+  debug("Waiting for confirmation\n");
+  // Wait for acknowledgment
+  while(!confirmation){
+    ;
+  }
+  confirmation = false;
+  return success;
+  // TODO: replace with thread safe application?
+  debug("Received confirmation\n");
+}
 
 int main(int argc, char *argv[]) {
 
@@ -127,6 +184,12 @@ int main(int argc, char *argv[]) {
     printf("%s: Incorrect usage.\n Usage: %s ADDR PORT USERNAME \n", argv[0], argv[0]);
     exit(1);
   }
+
+  // Initialize variables
+  acknowledged = false;
+  confirmation = false;
+  success      = false;
+  promptReady  = false;
 
 
 
@@ -234,59 +297,83 @@ int main(int argc, char *argv[]) {
     switch (operation) {
       case BROADCAST:
         printf("Broadcasting\n");
-        
+
         // Wait for acknowledgment
-        receive_int(clientSocket);
+        waitForAcknowledgement();
 
         // Get message
         bzero(maxBuffer, sizeof(maxBuffer));
-        printf("Please enter your message: "); // TODO: make this match the demo video
+        prompt("Please enter your message:\n>   "); // TODO: make this match the demo video
 
         if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
           debug("Failed to get user input");
         }
 
+        // Remove newline
+        maxBuffer[strlen(maxBuffer) - 1] = '\0';
+
         send_string(clientSocket, maxBuffer);
 
-        // Wait for confirmation
-        int status = receive_int(clientSocket);
-
-        if (status) {
-          printf("Successfully sent\n");
+        // Wait for acknowledgment
+        if(waitForConfirmation()){
+          printf("Sent successfully\n");
         } else {
-          printf("something didnt work ): sorry\n");
+          printf("Failed to send\n");
         }
 
         break;
       case PRIVATE:
         printf("privating\n");
+
+        // At this point, the server sends a list of active users.
+
+        // Get username
+        bzero(maxBuffer, sizeof(maxBuffer));
+        prompt("Please enter the username you'd like to message:\n>   "); // TODO: make this match the demo video
+
+        if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
+          debug("Failed to get user input");
+        }
+
+        // Remove newline
+        maxBuffer[strlen(maxBuffer) - 1] = '\0';
+
+        send_string(clientSocket, maxBuffer);
+
+        // Get message
+        bzero(maxBuffer, sizeof(maxBuffer));
+        prompt("Please enter your message:\n>   "); // TODO: make this match the demo video
+
+        if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
+          debug("Failed to get user input");
+        }
+
+        // Remove newline
+        maxBuffer[strlen(maxBuffer) - 1] = '\0';
+
+        send_string(clientSocket, maxBuffer);
+
+        if (waitForConfirmation()) {
+          printf("Message sent successfully\n"); // TODO: make this match the demo video
+        } else {
+          printf("User did not exist\n"); // TODO: make this match the demo video
+        }
+
         break;
       case HISTORY:
         printf("Historying\n");
         break;
       case EXIT:
         printf("exiting\n");
-        break;
+        close(clientSocket);
+        // TODO: how to exit the while loop
+        printf("waiting for listeningThread to end\n");
+        pthread_join(listeningThread, NULL);
+        return;
     }
   }
-  // enum opertaion = getOperation();
 
-    // Update most recent prompt to main prompt
-    // Display main prompt
+  debug("waiting for thread to end");
 
-    // Accept command
-
-    // Switch
-    // B:
-      //
-    // P:
-      //
-    // H:
-      // Request history from server
-    // X:
-      // quit
-
-
-  pthread_join(listeningThread, NULL);
 
 }

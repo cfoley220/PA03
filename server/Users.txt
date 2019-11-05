@@ -2,3 +2,6 @@ rut:hot
 new:password
 look:look
 hello:world
+Cat:catPassword
+dog:dogPassword
+fish:fishPassword

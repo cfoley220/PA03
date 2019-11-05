@@ -6,12 +6,18 @@
 
 enum Operation {BROADCAST, PRIVATE, HISTORY, EXIT};
 
+/*
+* Function used for debug. prints out the string along with the thread id.
+*/
 void debug(char *message) {
   printf("THREAD %d: %s", pthread_self(), message);
 
   fflush(stdout);
 }
 
+/*
+* Sends `size` amount of `buffer` via TCP connection to `clientSocket`
+*/
 int send_buffer(int clientSocket, char *buffer, int size) {
   int len;
   if ((len = write(clientSocket, buffer, size)) == -1) {
@@ -21,6 +27,10 @@ int send_buffer(int clientSocket, char *buffer, int size) {
   return len;
 }
 
+/*
+* Listens on the TCP connection on `clientSocket`.
+* Reads in `size` amount of data into `buffer`
+*/
 int receive_buffer(int clientSocket, char * buffer, int size) {
   int len;
   bzero(buffer, sizeof(buffer));
@@ -31,6 +41,9 @@ int receive_buffer(int clientSocket, char * buffer, int size) {
   return len;
 }
 
+/*
+* sends an int to clientSocket via TCP connection
+*/
 int send_int(int clientSocket, int value) {
   int len;
   uint32_t temp = htonl(value);
@@ -42,6 +55,9 @@ int send_int(int clientSocket, int value) {
   return len;
 }
 
+/*
+* Listens for an int on a TCP connection with clientSocket
+*/
 int receive_int(int clientSocket) {
   int buffer;
   int len;
@@ -55,17 +71,13 @@ int receive_int(int clientSocket) {
   return temp;
 }
 
-// PROTOCOL FOR SENDING AND RECIEVING STRINGS:
-  // Sending:
-      // Send the number of characters (NOT INCLUDING NULL CHARACTER)
-      // Send those characters
-  // Receive
-      // Listen for the size
-      // Declare a buffer[size+1] (for room for null)
-      // Bzero
-      // recieve_buffer(socket, buffer, SIZE)
-      // buffer[size] = '\0'
-
+/*
+* Abstraction of send_buffer and send_int to allow a message to send to clientSocket
+* with automatic sizing. It sends the number of characters within the message
+* (excluding the null chracter). It then sends those exact characters over a
+* TCP connection to `clientSocket`.
+* Complement of receive_string().
+*/
 void send_string(int clientSocket, char * message) {
   // Send the number of characters (NOT INCLUDING NULL CHARACTER)
 
@@ -82,12 +94,20 @@ void send_string(int clientSocket, char * message) {
   };
 }
 
+/*
+* Abstraction of receive_buffer and receive_int to allow receiving of a message
+* sent via send_string().
+* Listens for the size of the message.
+* Declares a buffer of [size+1] to make room for the null
+* Receives the characters
+* Sets buffer[size] to null character.
+*/
 char * receive_string(int clientSocket) {
   // Listen for the size
   int size = receive_int(clientSocket);
 
   // Allocate buffer
-  char * buffer = malloc(sizeof(char)*(size + 1));
+  char * buffer = malloc(sizeof(char)*(size + 1)); // TODO enter some fucking frees()
 
   bzero(buffer, sizeof(buffer));
 

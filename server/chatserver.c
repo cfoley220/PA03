@@ -69,11 +69,9 @@ int main(int argc, char* argv[]) {
 
     //create users and active clients files (signed in vs all)
     pthread_t serverThread;
-    //FILE* fp;
-    // fp = fopen("Clients.txt", "wr");
-    // fclose(fp);
-    // fp = fopen("Users.txt", "wr");
-    // fclose(fp);
+
+    FILE *fp = fopen("Clients.txt", "w");
+    fclose(fp);
 
     //creates a thread for every incoming connection from a client
     while ((newClient = accept(sockfd, (struct sockaddr *)&clientAddr, &clientAddrLen))) {
@@ -82,7 +80,6 @@ int main(int argc, char* argv[]) {
             perror("ERROR: Couldn't create thread!\n");
             exit(1);
         }
-
     }
 
     if (newClient < 0) {
@@ -90,12 +87,13 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
+    remove("Clients.txt");
+
     return 0;
 
 }
 
 int search(FILE* fp, char* username) {
-  //fseek(fp, 0, SEEK_SET);
   char temp[BUFFER_MAX_SIZE];
   bzero((char *)&temp, sizeof(temp));
   while(fgets(temp, sizeof(temp), fp)) {
@@ -113,7 +111,6 @@ int search(FILE* fp, char* username) {
 }
 
 int check_password(FILE* fp, char* username, char* password) {
-  //fseek(fp, 0, SEEK_SET);
   char temp[BUFFER_MAX_SIZE];
   bzero((char *)&temp, sizeof(temp));
   while(fgets(temp, sizeof(temp), fp)) {
@@ -124,7 +121,6 @@ int check_password(FILE* fp, char* username, char* password) {
     printf("username in file: %s\n", temp2);
     if (strcmp(temp2, username) == 0) {
       temp2 = strtok(NULL, ":");
-      //temp2[strlen(temp2) - 1] = '\0';
       temp2[strlen(temp2) - 1] = '\0';
       printf("password in file: %s\n", temp2);
       if (strcmp(temp2, password) == 0) {
@@ -139,13 +135,21 @@ int check_password(FILE* fp, char* username, char* password) {
 }
 
 int new_user(FILE *fp, char* username, char* password){
-  //fseek(fp, 0, SEEK_END);
   debug("in new user function\n");
   char line[BUFFER_MAX_SIZE];
   sprintf(line, "%s:%s\n", username, password);
   printf("line to be added to the file: %s\n", line);
   int status = fputs(line, fp);
   printf("status of adding it to the file %d\n", status);
+
+  // Create a history file for the user
+  char filename[BUFFER_MAX_SIZE];
+  bzero((char *)&filename, sizeof(filename));
+  sprintf(filename, "%s.chat", username);
+  FILE* fp_hist = fopen(filename, "w");
+  char *title = "############## Chat History: ##############";
+  fputs(title, fp_hist);
+  fclose(fp_hist);
 
   if(status < 0) {
     return BAD_PASSWORD_STATUS;
@@ -155,7 +159,6 @@ int new_user(FILE *fp, char* username, char* password){
 }
 
 int new_client(FILE* fp, char* username, int my_socket) {
-  //fseek(fp, 0, SEEK_END);
   debug("in new client function\n");
   char line[BUFFER_MAX_SIZE];
   sprintf(line, "%s:%d\n", username, my_socket);
@@ -169,6 +172,138 @@ int new_client(FILE* fp, char* username, int my_socket) {
 
   return GOOD_PASSWORD_STATUS;
 
+}
+
+int find_user_socket(FILE* fp, char* username){
+  char temp[BUFFER_MAX_SIZE];
+  bzero((char *)&temp, sizeof(temp));
+  while(fgets(temp, sizeof(temp), fp)) {
+    if (strcmp(temp, "") != 0) {
+      char* temp2;
+      bzero((char *)&temp2, sizeof(temp2));
+      temp2 = strtok(temp, ":");
+      if (strcmp(temp2, username) == 0) {
+        char* user_socket;
+        user_socket = strtok(NULL, ":");
+        return atoi(user_socket);
+      }
+    }
+    bzero((char *)&temp, sizeof(temp));
+  }
+  return -1;
+}
+
+static long getMicrotime() {
+	struct timeval currentTime;
+	gettimeofday(&currentTime, NULL);
+	return currentTime.tv_sec * (int)1e6 + currentTime.tv_usec;
+}
+
+char * find_username(int socket){
+  FILE *fp = fopen("Clients.txt", "r");
+  char * username = malloc(sizeof(char)*(BUFFER_MAX_SIZE)); // TODO enter some fucking frees()
+
+  char temp[BUFFER_MAX_SIZE];
+  bzero((char *)&temp, sizeof(temp));
+  while(fgets(temp, sizeof(temp), fp)) {
+    char* loop_username;
+    char* loop_socket;
+    bzero((char *)&loop_username, sizeof(loop_username));
+    loop_username = strtok(temp, ":");
+    loop_socket = strtok(NULL, ":");
+    loop_socket[strlen(loop_socket) - 1] = '\0';
+    if (atoi(loop_socket) == socket) {
+      sprintf(username, "%s", loop_username);
+      break;
+    }
+    bzero((char *)&temp, sizeof(temp));
+  }
+  fclose(fp);
+
+  return username;
+}
+
+int history(int from, int to, char* message){
+  // generate timestamp
+  long t = getMicrotime();
+  char entry[BUFFER_MAX_SIZE];
+
+  // get username from sender socket
+  char* from_username = find_username(from);
+
+  if(to == -1){
+    sprintf(entry, "%lu\tBroadcasted from %s: %s\n", t, from_username, message);
+    //write entry to each person's file
+    FILE* fp_writing = fopen("Clients.txt", "a");
+    char temp[BUFFER_MAX_SIZE];
+    bzero((char *)&temp, sizeof(temp));
+    while(fgets(temp, sizeof(temp), fp_writing)) {
+      if (strcmp(temp, "") != 0) {
+        char* user = strtok(temp, ":");
+        char file_name[BUFFER_MAX_SIZE];
+        bzero((char *)&file_name, sizeof(file_name));
+        sprintf(file_name, "%s.chat", user);
+        FILE *fp_user = fopen(file_name, "a");
+        fputs(entry, fp_user);
+        fclose(fp_user);
+      }
+      bzero((char *)&temp, sizeof(temp));
+    }
+    fclose(fp_writing);
+
+  } else {
+
+    // find the 'to' user
+    char *to_username = find_username(to);
+
+    sprintf(entry, "%lu\tPrivate message from %s to %s: %s\n", t, to_username, from_username, message);
+
+    // put in history of sender
+    char file_name[BUFFER_MAX_SIZE];
+    bzero((char *)&file_name, sizeof(file_name));
+    sprintf(file_name, "%s.chat", from_username);
+    FILE *fp = fopen(file_name, "a");
+    fputs(entry, fp);
+    fclose(fp);
+
+    //put in history of receiver
+    bzero(file_name, sizeof(file_name));
+    sprintf(file_name, "%s.chat", to_username);
+    FILE *fp2 = fopen(file_name, "a");
+    fputs(entry, fp);
+    fclose(fp2);
+
+  }
+
+  return 1;
+
+}
+
+int broadcast(int clientSocket, char* received_message, FILE* fp) {
+  char message_to_send[BUFFER_MAX_SIZE];
+  bzero((char*)&message_to_send, sizeof(message_to_send));
+  sprintf(message_to_send, "%s", "*** Incoming Public Message ***: ");
+  strcat(message_to_send, received_message);
+
+  char temp[BUFFER_MAX_SIZE];
+	bzero((char *)&temp, sizeof(temp));
+	while(fgets(temp, sizeof(temp), fp)){
+    if (strcmp(temp, "") != 0){
+			char* file_socket;
+      char* username;
+			bzero((char *)&file_socket, sizeof(file_socket));
+      bzero((char *)&username, sizeof(username));
+			username = strtok(temp, ":");
+      file_socket = strtok(NULL, ":");
+			int user_socket = atoi(file_socket);
+			if (user_socket != clientSocket) {
+				send_string(user_socket, message_to_send);
+			}
+		}
+		bzero((char *)&temp, sizeof(temp));
+  }
+
+  return 1;
 }
 
 void* connection_handler(void* socket) {
@@ -257,14 +392,118 @@ void* connection_handler(void* socket) {
     //char* option = "";
     while (1) {
       enum Operation option = receive_int(clientSocket);
+      //BROADCAST
       if (option == BROADCAST) {
         printf("in broadcast option!\n");
-        int status = send_int(clientSocket, 1);
+        send_string(clientSocket, "ACK");
         char* received_message = receive_string(clientSocket);
-        printf("%s\n", received_message);
-        break;
+        //printf("%s\n", received_message);
+        FILE* fp = fopen("Clients.txt", "r");
+        int status = broadcast(clientSocket, received_message, fp);
+        fclose(fp);
+        debug("Got out of broadcast function\n");
+        if(status == 1){
+          // add history entry
+          int status_hist = history(clientSocket, -1, received_message);
+
+          // send success
+          send_string(clientSocket, "CONF_SUCCESS");
+        } else {
+          send_string(clientSocket, "CONF_FAIL");
+        }
 
       }
+
+      //PRIVATE
+      else if (option == PRIVATE) {
+        printf("in private option!\n");
+        //send_string(clientSocket, "ACK");
+
+        //Send client list of active users
+        FILE* fp = fopen("Clients.txt", "r");
+        char username_list[BUFFER_MAX_SIZE];
+
+        char temp[BUFFER_MAX_SIZE];
+      	bzero((char *)&temp, sizeof(temp));
+        int count = 1;
+      	while(fgets(temp, sizeof(temp), fp)){
+          if (strcmp(temp, "") != 0){
+            char* user;
+            bzero((char *)&user, sizeof(user));
+      			user = strtok(temp, ":");
+      			if (strcmp(username, user) != 0) {
+              char otherTemp[BUFFER_MAX_SIZE];
+              bzero(otherTemp, sizeof(otherTemp));
+              sprintf(otherTemp, "%d) %s\n", count, user);
+              strcat(username_list, otherTemp);
+              count++;
+      			}
+      		}
+      		bzero((char *)&temp, sizeof(temp));
+        }
+        fclose(fp);
+        send_string(clientSocket, username_list);
+        char* received_username = receive_string(clientSocket);
+        char* received_message = receive_string(clientSocket);
+
+        FILE* fp2 = fopen("Clients.txt", "r");
+        int userSocket = find_user_socket(fp2, received_username);
+        fclose(fp2);
+        if (userSocket == -1) {
+          send_string(clientSocket, "CONF_FAIL");
+        } else {
+          send_string(userSocket, received_message);
+          send_string(clientSocket, "CONF_SUCCESS");
+
+          history(clientSocket, userSocket, received_message);
+        }
+
+      }
+
+      // HISTORY
+      else if (option == HISTORY) {
+        send_string(clientSocket, "THIS IS THE HISTORY FILE\n");
+      }
+
+      // EXIT
+      else if (option == EXIT) {
+          // Close socket
+          printf("Closing socket with client\n");
+          close(clientSocket);
+          // Remove as a part of online client
+
+          // Rename file
+          printf("renaming file\n");
+
+          rename("Clients.txt", "tempClients.txt");
+
+          // Open client file
+          printf("opening files\n");
+          FILE* f_in  = fopen("tempClients", "r");
+          FILE* f_out = fopen("Clients.txt", "w");
+
+          // Go through each line of the file
+          printf("going through each line\n");
+          char buffer[BUFFER_MAX_SIZE];
+
+          while (fgets(buffer, sizeof(buffer), f_in)) {
+            // Extract socket from line of file
+            char * username = strtok(buffer, ":");
+            char * file_socket = strtok(NULL, ":");
+            int user_socket = atoi(file_socket);
+            // If
+            if (user_socket != clientSocket) {
+                fputs(buffer, f_out);
+            }
+          }
+
+          fclose(f_in);
+          fclose(f_out);
+          remove("tempClients.txt");
+          break;
+
+      }
+
 
     }
 
