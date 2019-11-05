@@ -1,3 +1,12 @@
+/*
+* chatserver.c
+* PA03 project
+* CSE 30264 - Computer Networks - Fall 2019
+* bblum1, cfoley, cmarkley
+*
+* TODO: file explanation
+*/
+
 // Header files
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +20,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include "../parameters.h"
 #include "../communications.h"
 
 void* connection_handler(void*);
@@ -146,9 +156,11 @@ int new_user(FILE *fp, char* username, char* password){
   char filename[BUFFER_MAX_SIZE];
   bzero((char *)&filename, sizeof(filename));
   sprintf(filename, "%s.chat", username);
+  // TODO: chat history line not put into file
   FILE* fp_hist = fopen(filename, "w");
-  char *title = "############## Chat History: ##############";
-  fputs(title, fp_hist);
+  //char title[BUFFER_MAX_SIZE];
+  //sprintf(title, "############## Chat History: ##############");
+  fputs("############## Chat History: ##############", fp_hist);
   fclose(fp_hist);
 
   if(status < 0) {
@@ -194,6 +206,7 @@ int find_user_socket(FILE* fp, char* username){
 }
 
 static long getMicrotime() {
+  // TODO: change this to a formatted time string rather than a long
 	struct timeval currentTime;
 	gettimeofday(&currentTime, NULL);
 	return currentTime.tv_sec * (int)1e6 + currentTime.tv_usec;
@@ -232,24 +245,27 @@ int history(int from, int to, char* message){
   char* from_username = find_username(from);
 
   if(to == -1){
+    debug("Got to broadcast entry\n");
     sprintf(entry, "%lu\tBroadcasted from %s: %s\n", t, from_username, message);
     //write entry to each person's file
-    FILE* fp_writing = fopen("Clients.txt", "a");
+    FILE* fp_reading = fopen("Clients.txt", "r");
     char temp[BUFFER_MAX_SIZE];
     bzero((char *)&temp, sizeof(temp));
-    while(fgets(temp, sizeof(temp), fp_writing)) {
+    while(fgets(temp, sizeof(temp), fp_reading)) {
       if (strcmp(temp, "") != 0) {
         char* user = strtok(temp, ":");
+        printf("Got to user %s in clients file\n", user);
         char file_name[BUFFER_MAX_SIZE];
         bzero((char *)&file_name, sizeof(file_name));
         sprintf(file_name, "%s.chat", user);
         FILE *fp_user = fopen(file_name, "a");
+        printf("The file pointer for user file %s: %d\n", user, fp_user);
         fputs(entry, fp_user);
         fclose(fp_user);
       }
       bzero((char *)&temp, sizeof(temp));
     }
-    fclose(fp_writing);
+    fclose(fp_reading);
 
   } else {
 
@@ -467,20 +483,25 @@ void* connection_handler(void* socket) {
 
       // EXIT
       else if (option == EXIT) {
-          // Close socket
+          // Respond to client
+          send_string(clientSocket, "EXIT");
+
+          // Closes socket
           printf("Closing socket with client\n");
           close(clientSocket);
           // Remove as a part of online client
 
-          // Rename file
+          // Renames file
           printf("renaming file\n");
 
           rename("Clients.txt", "tempClients.txt");
 
-          // Open client file
+          // Opens both files
           printf("opening files\n");
           FILE* f_in  = fopen("tempClients", "r");
-          FILE* f_out = fopen("Clients.txt", "w");
+          FILE* f_out = fopen("Clients.txt", "a");
+          // Clients.txt is opened as appending so in case another thread
+          // created the file, this thread doesn’t overwrite it
 
           // Go through each line of the file
           printf("going through each line\n");
@@ -491,7 +512,7 @@ void* connection_handler(void* socket) {
             char * username = strtok(buffer, ":");
             char * file_socket = strtok(NULL, ":");
             int user_socket = atoi(file_socket);
-            // If
+            // If the socket isnt the one we are searching for, add it to the file
             if (user_socket != clientSocket) {
                 fputs(buffer, f_out);
             }
@@ -506,15 +527,6 @@ void* connection_handler(void* socket) {
 
 
     }
-
-
-
-
-
-
-    //send_int(clientSocket, 5);
-    //send_buffer(clientSocket, "hello", 5);
-
 
     // make sure this happens after we finish using username
     free(username);

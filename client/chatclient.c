@@ -1,3 +1,18 @@
+/*
+* chatclient.c
+* PA03 project
+* CSE 30264 - Computer Networks - Fall 2019
+* bblum1, cfoley, cmarkley
+*
+* This is the client side for our chat application. After connecting to the
+* server, it first handles logging into the chat server. It then creates a
+* listening thread. This listening thread reads from the TCP socket connected
+* to the server, and handles incoming messages. The main thread continues on to
+* handling user interaction, prompting the user for operations and handling them.
+* The client handles broadcast messaging, private messaging, chat history, and
+* exiting.
+*/
+
 // Header files
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,10 +27,14 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <stdbool.h>
+#include "../parameters.h"
 #include "../communications.h"
 
 // Flags used to allow thread communication
-bool acknowledged, confirmation, success, promptReady;
+bool acknowledged, confirmation, success;
+
+pthread_mutex_t promptMutex = PTHREAD_MUTEX_INITIALIZER;
+
 
 // Variable the holds that last prompt sent to the user.
 char lastPrompt[BUFFER_MAX_SIZE];
@@ -26,9 +45,9 @@ char lastPrompt[BUFFER_MAX_SIZE];
 void prompt(char * p){
   printf("%s", p);
 
-  promptReady = false;
+  pthread_mutex_lock(&promptMutex);
   strcpy(lastPrompt, p);
-  promptReady = true;
+  pthread_mutex_unlock(&promptMutex);
 
 }
 
@@ -47,7 +66,6 @@ void* receive_messages(void* socket) {
     // Receive size of message to receive
     int size = receive_int(clientSocket);
 
-    debug("I recieved a size from the server.\n");
     if (size < 0) {
       debug("something went wrong"); //TODO
     }
@@ -58,29 +76,48 @@ void* receive_messages(void* socket) {
     receive_buffer(clientSocket, message, size);
     message[size] = '\0';
 
-    debug("I recieved a buffer from the server\n");
-
-    printf("DEBUG: got message: %s\n", message); // TODO: delete
+    printf("Received message: %s\n", message); // TODO: delete
 
     // Handle message
     if (strcmp(message, "ACK") == 0) {
+
+      // Notify main thread of acknowledgment
       acknowledged = true;
+
     } else if (strcmp(message, "CONF_SUCCESS") == 0){
+
+      // Notify main thread of a successful confirmation
       confirmation = true;
       success = true;
+
     } else if (strcmp(message, "CONF_FAIL") == 0){
+
+      // Notify main thread of a unsuccessful confirmation
       confirmation = true;
       success = false;
+
+    } else if (strcmp(message, "EXIT") == 0){
+
+      return;
+
     } else {
-      // Print message
+      // Message is a standard communcation message
 
       // printf("%s", message); // TODO: uncomment
 
-      // Wait for prompt to be set
-      while (!promptReady) {
-        ;
-      }
+      // Display propmt to user
+      pthread_mutex_lock(&promptMutex);
+
+      // Flush out all of previous typed things
+      // TODO: this is not working
+      while (getche() != '\n') { ; }
+
+      // Display new prompt
       printf(lastPrompt);
+      // Flush to ensure entire prompt is printed.
+      fflush(stdout);
+      pthread_mutex_unlock(&promptMutex);
+
     }
 
   }
@@ -132,6 +169,7 @@ enum Operation getOperation(){
     maxBuffer[strlen(maxBuffer) - 1] = '\0';
   }
 
+  // Return proper Operation based upon input
   if (strcmp(maxBuffer, "B") == 0) {
     return BROADCAST;
   } else if (strcmp(maxBuffer, "P") == 0) {
@@ -151,14 +189,12 @@ enum Operation getOperation(){
 * Spin-waits until acknowledgment flag is set to true. Resets flag to false
 */
 void waitForAcknowledgement() {
-  debug("Waiting for acknowledgment\n");
   // Wait for acknowledgment
   while(!acknowledged){
     ;
   }
   acknowledged = false;
   // TODO: replace with thread safe application?
-  debug("Received acknowledgment\n");
 }
 
 /*
@@ -166,7 +202,6 @@ void waitForAcknowledgement() {
 * Returns the value of the confirmation
 */
 bool waitForConfirmation() {
-  debug("Waiting for confirmation\n");
   // Wait for acknowledgment
   while(!confirmation){
     ;
@@ -174,7 +209,6 @@ bool waitForConfirmation() {
   confirmation = false;
   return success;
   // TODO: replace with thread safe application?
-  debug("Received confirmation\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -189,9 +223,6 @@ int main(int argc, char *argv[]) {
   acknowledged = false;
   confirmation = false;
   success      = false;
-  promptReady  = false;
-
-
 
   /*********************
   *  Connect to server *
@@ -223,8 +254,6 @@ int main(int argc, char *argv[]) {
     exit(0);
   }
 
-  debug("Connection established\n");
-
   // Prepare max buffer
   char maxBuffer[BUFFER_MAX_SIZE];
   bzero(maxBuffer, sizeof(maxBuffer));
@@ -234,9 +263,8 @@ int main(int argc, char *argv[]) {
   **************************/
 
   // Send username to server
-  printf("Sending username. (%s)\n", username);
   send_string(clientSocket, username);
-  printf("Sent username.\n");
+  printf("Sent username: (%s)\n", username);
 
   // Receive response from server
   int userAccountStatus = receive_int(clientSocket);
@@ -254,8 +282,8 @@ int main(int argc, char *argv[]) {
 
 
   // Send password
-  printf("Sending password (%s)\n", maxBuffer);
   send_string(clientSocket, maxBuffer);
+  printf("Sent password (%s)\n", maxBuffer);
 
   // Handle status
   int passwordStatus = receive_int(clientSocket);
@@ -269,13 +297,9 @@ int main(int argc, char *argv[]) {
     printf("Successful login. Welcome back.\n");
   }
 
-  debug("done with username and password shit.\n");
-
   /***************************
   *  Create listening thread *
   ****************************/
-
-  debug("creating new thread\n");
 
   pthread_t listeningThread;
   pthread_create(&listeningThread, NULL, receive_messages, (void*) &clientSocket);
@@ -285,6 +309,7 @@ int main(int argc, char *argv[]) {
   /**********************
   *  Interact with user *
   **********************/
+
   int counter = 0; //TODO: delete counter
   while(1 && counter++ < 10) {
 
@@ -295,8 +320,8 @@ int main(int argc, char *argv[]) {
     send_int(clientSocket, operation);
 
     switch (operation) {
+
       case BROADCAST:
-        printf("Broadcasting\n");
 
         // Wait for acknowledgment
         waitForAcknowledgement();
@@ -322,8 +347,8 @@ int main(int argc, char *argv[]) {
         }
 
         break;
+
       case PRIVATE:
-        printf("privating\n");
 
         // At this point, the server sends a list of active users.
 
@@ -360,15 +385,20 @@ int main(int argc, char *argv[]) {
         }
 
         break;
+
       case HISTORY:
+
         printf("Historying\n");
+
         break;
+
       case EXIT:
+
         printf("exiting\n");
-        close(clientSocket);
         // TODO: how to exit the while loop
         printf("waiting for listeningThread to end\n");
         pthread_join(listeningThread, NULL);
+        close(clientSocket);
         return;
     }
   }
