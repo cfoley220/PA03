@@ -2,13 +2,13 @@
 ### Bailey Blum, Catherine Markley, Chris Foley
 
 Included File Names:
-communications.h
-parameters.h
-chat/chatclient.c
-chat/Makefile
-server/chatserver.c
-server/logs/Users.txt
-server/logs/Clients.txt
+communications.h,
+parameters.h,
+chat/chatclient.c,
+chat/Makefile,
+server/chatserver.c,
+server/logs/Users.txt,
+server/logs/Clients.txt,
 server/Makefile
 
 To run our code, we just step by step followed the demo video. The Users.txt file contains the list of all registered users, and Clients.txt contains all users that are currently online. The logs folder contains all of the chat histories of each user. Outside of the client and server directories are two header files containing widely used functions.
