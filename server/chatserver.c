@@ -15,6 +15,8 @@
 *
 */
 
+// TODO: in demo video at 2:29, bottom right screen. count starts at 0. look into
+
 // Header files
 #include <stdio.h>
 #include <stdlib.h>
@@ -80,7 +82,7 @@ int main(int argc, char* argv[]) {
         exit(-1);
     }
 
-    printf("Waiting for connection on port %d\n", port);
+    printf("waiting for connections...\n");
 
     //int clientSocket;
     int newClient;
@@ -97,7 +99,7 @@ int main(int argc, char* argv[]) {
 
     //creates a thread for every incoming connection from a client
     while ((newClient = accept(sockfd, (struct sockaddr *)&clientAddr, &clientAddrLen))) {
-        printf("Connection established\n");
+        printf("Connection accepted\n");
         if (pthread_create(&serverThread, NULL, connection_handler, (void*) &newClient) < 0) {
             perror("ERROR: Couldn't create thread!\n");
             exit(1);
@@ -278,7 +280,7 @@ int history(int from, int to, char* message) {
     // find the 'to' user
     char *to_username = find_username(to);
 
-    sprintf(entry, "%s\tPrivate message from %s to %s: %s\n", datetime, to_username, from_username, message);
+    sprintf(entry, "%s\tPrivate message from %s to %s: %s\n", datetime, from_username, to_username, message);
 
     // put in history of sender
     char file_name[BUFFER_MAX_SIZE];
@@ -307,9 +309,9 @@ int history(int from, int to, char* message) {
 int broadcast(int clientSocket, char* received_message, FILE* fp) {
   char message_to_send[BUFFER_MAX_SIZE];
   bzero((char*)&message_to_send, sizeof(message_to_send));
-  sprintf(message_to_send, "%s", "### New Message: ");
+  sprintf(message_to_send, "%s", "############# New Message: ");
   strcat(message_to_send, received_message);
-  strcat(message_to_send, " ###\n");
+  strcat(message_to_send, "#############\n");
 
   char temp[BUFFER_MAX_SIZE];
 	bzero((char *)&temp, sizeof(temp));
@@ -430,6 +432,8 @@ void* connection_handler(void* socket) {
       else if (option == PRIVATE) {
         printf("PRIVATE\n");
 
+        // TODO: when there are 3 users online. the list sent for private message only includes 1
+
         //Send client list of active users
         FILE* fp = fopen("./logs/Clients.txt", "r");
         char username_list[BUFFER_MAX_SIZE];
@@ -478,7 +482,6 @@ void* connection_handler(void* socket) {
 
             fclose(fp_search);
             if(exists == -1) {
-              printf("should not see\n");
               send_string(clientSocket, "CONF_FAIL");
             } else {
               send_string(clientSocket, "CONF_SUCCESS");
@@ -497,9 +500,9 @@ void* connection_handler(void* socket) {
           } else {
             char *from_user = find_username(clientSocket);
             char message_to_send[BUFFER_MAX_SIZE];
-            sprintf(message_to_send, "### New Message: Message Received from %s: ", from_user);
+            sprintf(message_to_send, "############## New Message: Message Received from %s: ", from_user);
             strcat(message_to_send, received_message);
-            strcat(message_to_send, " ###\n");
+            strcat(message_to_send, " ##############\n");
             send_string(userSocket, message_to_send);
             send_string(clientSocket, "CONF_SUCCESS");
             free(from_user);
@@ -511,6 +514,8 @@ void* connection_handler(void* socket) {
 
       // HISTORY bookmark
       else if (option == HISTORY) {
+        printf("HISTORY\n");
+
         char *user = find_username(clientSocket);
         char filename[BUFFER_MAX_SIZE];
         bzero((char *)&filename, sizeof(filename));

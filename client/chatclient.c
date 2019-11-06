@@ -107,7 +107,7 @@ void* receive_messages(void* socket) {
       pthread_mutex_lock(&promptMutex);
 
       // Print message
-      printf("\n%s\n", message);
+      printf("\n\n%s\n\n", message);
 
       // Display prompt again
       printf(lastPrompt);
@@ -300,7 +300,7 @@ int main(int argc, char *argv[]) {
       while (passwordStatus == BAD_PASSWORD_STATUS) {
 
         // Request password
-        printf("Invalid password. Please enter again:  ");
+        printf("Invalid password.\n Please enter again >> ");
 
         bzero(maxBuffer, sizeof(maxBuffer));
         if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
@@ -312,7 +312,6 @@ int main(int argc, char *argv[]) {
 
         // Send password
         send_string(clientSocket, maxBuffer);
-        printf("Sent password (%s)\n", maxBuffer);
 
         passwordStatus = receive_int(clientSocket);
       }
