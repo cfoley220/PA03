@@ -33,8 +33,8 @@
 // Flags used to allow thread communication
 bool acknowledged, confirmation, success;
 
+// Lock to block printing the prompt
 pthread_mutex_t promptMutex = PTHREAD_MUTEX_INITIALIZER;
-
 
 // Variable the holds that last prompt sent to the user.
 char lastPrompt[BUFFER_MAX_SIZE];
@@ -56,26 +56,26 @@ void prompt(char * p){
 * Handler for the listening thread to recieve messages from the server
 */
 void* receive_messages(void* socket) {
-  // debug("i am child (listening thread)\n");
-
   // Convert socket to a usable variable
   int clientSocket = *(int *)socket;
 
-  int count = 0;
-  while(true && count++ < 30) { //TODO: remove counter
+  while(true) {
 
     // Receive size of message to receive
-    int size = receive_int(clientSocket);
+    // int size = receive_int(clientSocket);
+    //
+    // if (size < 0) {
+    //   printf("Recieved a negative size from server.\n");
+    //   exit(1);
+    // }
+    //
+    // // Receive message
+    // char message[size+1];
+    // bzero(message, sizeof(message));
+    // receive_buffer(clientSocket, message, size);
+    // message[size] = '\0';
 
-    if (size < 0) {
-      debug("something went wrong"); //TODO
-    }
-
-    // Receive message
-    char message[size+1];
-    bzero(message, sizeof(message));
-    receive_buffer(clientSocket, message, size);
-    message[size] = '\0';
+    char * message = receive_string(clientSocket);
 
     // printf("Received message:\n~~~\n%s\n~~~\n", message);
     // Handle message
@@ -97,29 +97,29 @@ void* receive_messages(void* socket) {
       success = false;
 
     } else if (strcmp(message, "EXIT") == 0){
-
+      free(message);
       return;
 
     } else {
-      // Message is a standard communcation message
+      /* Message is a standard communcation message */
 
-      printf("\n%s\n", message); // TODO: uncomment
+      // Lock the terminal prompt
+      pthread_mutex_lock(&promptMutex);
 
-      // Display propmt to user
-      pthread_mutex_lock(&promptMutex); //TODO: move this above the print?
+      // Print message
+      printf("\n%s\n", message);
 
-      // Flush out all of previous typed things
-      // TODO: this is not working
-      // while (getche() != '\n') { ; }
-
-      // Display new prompt
+      // Display prompt again
       printf(lastPrompt);
+
       // Flush to ensure entire prompt is printed.
       fflush(stdout);
+
+      // Unlock the terminal prompt
       pthread_mutex_unlock(&promptMutex);
 
     }
-
+    free(message);
   }
 }
 
@@ -142,7 +142,7 @@ bool isValidOperation(char * op){
 * Prompts the user for a operation and converts it to a proper Operation
 */
 enum Operation getOperation(){
-  prompt("Please type in a operation (B, P, H, X):\n>   ");
+  prompt("Enter P for private conversation.\nEnter B for message broadcasting.\nEnter H for chat history.\nEnter X for Exit\n>> ");
 
   // Prepare max buffer
   char maxBuffer[BUFFER_MAX_SIZE];
@@ -194,7 +194,6 @@ void waitForAcknowledgement() {
     ;
   }
   acknowledged = false;
-  // TODO: replace with thread safe application?
 }
 
 /*
@@ -208,7 +207,6 @@ bool waitForConfirmation() {
   }
   confirmation = false;
   return success;
-  // TODO: replace with thread safe application?
 }
 
 int main(int argc, char *argv[]) {
@@ -264,14 +262,18 @@ int main(int argc, char *argv[]) {
 
   // Send username to server
   send_string(clientSocket, username);
-  printf("Sent username: (%s)\n", username);
 
   // Receive response from server
   int userAccountStatus = receive_int(clientSocket);
 
   // Request password
   bzero(maxBuffer, sizeof(maxBuffer));
-  printf("Please enter your password: "); // TODO: make this match the demo video
+
+  if (userAccountStatus == NEW_USER_STATUS) {
+    printf("New user? Create password >>  ");
+  } else {
+    printf("Welcome Back! Enter password >>  ");
+  }
 
   if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
     debug("Failed to get user input");
@@ -283,18 +285,49 @@ int main(int argc, char *argv[]) {
 
   // Send password
   send_string(clientSocket, maxBuffer);
-  printf("Sent password (%s)\n", maxBuffer);
 
-  // Handle status
   int passwordStatus = receive_int(clientSocket);
 
-  if (passwordStatus == BAD_PASSWORD_STATUS) {
-    printf("Failure to login\n");
-    exit(1);
-  } else if (userAccountStatus == NEW_USER_STATUS) {
-    printf("User creation successful\n");
+  // Handle status
+  if (userAccountStatus == OLD_USER_STATUS) {
+    if (passwordStatus == GOOD_PASSWORD_STATUS) {
+      /* User is returning user with correct password */
+      printf("Welcome %s!\n", username);
+
+    } else {
+
+      /* User is returning user with incorrct password */
+      while (passwordStatus == BAD_PASSWORD_STATUS) {
+
+        // Request password
+        printf("Invalid password. Please enter again:  ");
+
+        bzero(maxBuffer, sizeof(maxBuffer));
+        if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
+          debug("Failed to get user input");
+        }
+
+        // Remove new line
+        maxBuffer[strlen(maxBuffer) - 1] = '\0';
+
+        // Send password
+        send_string(clientSocket, maxBuffer);
+        printf("Sent password (%s)\n", maxBuffer);
+
+        passwordStatus = receive_int(clientSocket);
+      }
+      printf("Welcome %s!\n", username);
+    }
+
   } else {
-    printf("Successful login. Welcome back.\n");
+    if (passwordStatus == GOOD_PASSWORD_STATUS) {
+      /* New user with a good password */
+        printf("Welcome %s! Registration Complete.\n", username);
+    } else {
+      /* New user with a bad password (shouldnt occur) */
+      debug("Something went wrong.\n");
+      exit(1);
+    }
   }
 
   /***************************
@@ -303,8 +336,6 @@ int main(int argc, char *argv[]) {
 
   pthread_t listeningThread;
   pthread_create(&listeningThread, NULL, receive_messages, (void*) &clientSocket);
-
-  // debug("i am main thread\n");
 
   /**********************
   *  Interact with user *
@@ -327,7 +358,7 @@ int main(int argc, char *argv[]) {
 
         // Get message
         bzero(maxBuffer, sizeof(maxBuffer));
-        prompt("Please enter your message:\n>   "); // TODO: make this match the demo video
+        prompt("Enter Broadcast Message >>  ");
 
         if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
           debug("Failed to get user input");
@@ -340,26 +371,34 @@ int main(int argc, char *argv[]) {
 
         // Wait for acknowledgment
         if(waitForConfirmation()){
-          printf("Sent successfully\n");
+          printf("Messaged Broadcasted.\n");
         } else {
-          printf("Failed to send\n");
+          printf("Failed to send.\n");
         }
 
         break;
 
       case PRIVATE:
 
+        // Cancels out the last propmt stop premptive printing of wrong prompt
+        bzero(lastPrompt, sizeof(lastPrompt));
 
         if(!waitForConfirmation()){
           printf("No other users are currently online.\n");
           break;
         };
 
+
+
         // At this point, the server sends a list of active users.
+
+        // Client waits for acknowledgement to ensure the list arrived before
+        // displaying the next prompt.
+        waitForAcknowledgement();
 
         // Get username
         bzero(maxBuffer, sizeof(maxBuffer));
-        prompt("Please enter the username you'd like to message:\n>   "); // TODO: make this match the demo video
+        prompt("Enter User Name >>   ");
 
         if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
           debug("Failed to get user input");
@@ -368,11 +407,28 @@ int main(int argc, char *argv[]) {
         // Remove newline
         maxBuffer[strlen(maxBuffer) - 1] = '\0';
 
+        // send username to send message to
         send_string(clientSocket, maxBuffer);
+
+        // Ensure username works
+        while(!waitForConfirmation()) {
+          prompt("User does not exist. Please re-enter username:  ");
+          bzero(maxBuffer, sizeof(maxBuffer));
+
+          if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
+            debug("Failed to get user input");
+          }
+
+          // Remove newline
+          maxBuffer[strlen(maxBuffer) - 1] = '\0';
+
+          // send username to send message to
+          send_string(clientSocket, maxBuffer);
+        }
 
         // Get message
         bzero(maxBuffer, sizeof(maxBuffer));
-        prompt("Please enter your message:\n>   "); // TODO: make this match the demo video
+        prompt("Enter Private Message >>   ");
 
         if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
           debug("Failed to get user input");
@@ -381,12 +437,13 @@ int main(int argc, char *argv[]) {
         // Remove newline
         maxBuffer[strlen(maxBuffer) - 1] = '\0';
 
+        // Send message to be sent
         send_string(clientSocket, maxBuffer);
 
         if (waitForConfirmation()) {
-          printf("Message sent successfully\n"); // TODO: make this match the demo video
+          printf("Message Sent.\n");
         } else {
-          printf("User did not exist\n"); // TODO: make this match the demo video
+          printf("Something went wrong.\n");
         }
 
         break;
@@ -400,17 +457,10 @@ int main(int argc, char *argv[]) {
         break;
 
       case EXIT:
-
-        printf("exiting\n");
-        // TODO: how to exit the while loop
-        printf("waiting for listeningThread to end\n");
+        //printf("Goodbye!\n");
         pthread_join(listeningThread, NULL);
         close(clientSocket);
         return;
     }
   }
-
-  debug("waiting for thread to end");
-
-
 }

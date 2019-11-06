@@ -3,3 +3,4 @@ all: chatserver.c
 
 clean:
 	$(RM) chatserver
+	$(RM) ./logs/*
