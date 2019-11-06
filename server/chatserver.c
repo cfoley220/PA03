@@ -15,8 +15,6 @@
 *
 */
 
-// TODO: in demo video at 2:29, bottom right screen. count starts at 0. look into
-
 // Header files
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,10 +89,8 @@ int main(int argc, char* argv[]) {
     pthread_t serverThread;
 
     // Create new clients file. The "w" erases the file if it already existed
-    // FILE *fp = fopen("Clients.txt", "w");
     fclose(fopen("./logs/Clients.txt", "w"));
     // Open/create users file. The "a" ensures no loss of data if file exists
-    // fp = fopen("Users.txt", "a");
     fclose(fopen("./logs/Users.txt", "a"));
 
     //creates a thread for every incoming connection from a client
@@ -309,9 +305,7 @@ int history(int from, int to, char* message) {
 int broadcast(int clientSocket, char* received_message, FILE* fp) {
   char message_to_send[BUFFER_MAX_SIZE];
   bzero((char*)&message_to_send, sizeof(message_to_send));
-  sprintf(message_to_send, "%s", "############# New Message: ");
-  strcat(message_to_send, received_message);
-  strcat(message_to_send, "#############\n");
+  sprintf(message_to_send, "\n############# New Message: %s #############\n", received_message);
 
   char temp[BUFFER_MAX_SIZE];
 	bzero((char *)&temp, sizeof(temp));
@@ -432,35 +426,37 @@ void* connection_handler(void* socket) {
       else if (option == PRIVATE) {
         printf("PRIVATE\n");
 
-        // TODO: when there are 3 users online. the list sent for private message only includes 1
-
         //Send client list of active users
         FILE* fp = fopen("./logs/Clients.txt", "r");
-        char username_list[BUFFER_MAX_SIZE];
-        bzero(username_list, sizeof(username_list));
 
-        char temp[BUFFER_MAX_SIZE];
-      	bzero((char *)&temp, sizeof(temp));
-        int count = 1;
-      	while(fgets(temp, sizeof(temp), fp)){
-          if (strcmp(temp, "") != 0){
+        char username_list[BUFFER_MAX_SIZE];
+        char line[BUFFER_MAX_SIZE];
+        bzero(username_list, sizeof(username_list));
+      	bzero((char *)&line, sizeof(line));
+
+        sprintf(username_list, "Online Users:\n");
+
+        int count = 0;
+        int num_others = 0;
+      	while(fgets(line, sizeof(line), fp)){
+          if (strcmp(line, "") != 0){
             char* user;
             bzero((char *)&user, sizeof(user));
-      			user = strtok(temp, ":");
+      			user = strtok(line, ":");
       			if (strcmp(username, user) != 0) {
               char otherTemp[BUFFER_MAX_SIZE];
               bzero(otherTemp, sizeof(otherTemp));
-              sprintf(username_list, "Online Users:\n");
               sprintf(otherTemp, "%d) %s\n", count, user);
               strcat(username_list, otherTemp);
-              count++;
+              num_others++;
       			}
+            count++;
       		}
-      		bzero((char *)&temp, sizeof(temp));
+      		bzero((char *)&line, sizeof(line));
         }
         fclose(fp);
 
-        if(strlen(username_list) <= 0){ // there are no other users
+        if(num_others == 0){ // there are no other users
           send_string(clientSocket, "CONF_FAIL");
         } else {
           send_string(clientSocket, "CONF_SUCCESS");

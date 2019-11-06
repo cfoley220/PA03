@@ -300,7 +300,7 @@ int main(int argc, char *argv[]) {
       while (passwordStatus == BAD_PASSWORD_STATUS) {
 
         // Request password
-        printf("Invalid password.\n Please enter again >> ");
+        printf("Invalid password.\nPlease enter again >> ");
 
         bzero(maxBuffer, sizeof(maxBuffer));
         if ((fgets(maxBuffer, sizeof(maxBuffer), stdin)) < 0) {
@@ -370,9 +370,9 @@ int main(int argc, char *argv[]) {
 
         // Wait for acknowledgment
         if(waitForConfirmation()){
-          printf("Messaged Broadcasted.\n");
+          printf("Message broadcasted.\n\n");
         } else {
-          printf("Failed to send.\n");
+          printf("Failed to send.\n\n");
         }
 
         break;
@@ -386,8 +386,6 @@ int main(int argc, char *argv[]) {
           printf("No other users are currently online.\n");
           break;
         };
-
-
 
         // At this point, the server sends a list of active users.
 
